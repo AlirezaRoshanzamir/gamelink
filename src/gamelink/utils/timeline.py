@@ -3,7 +3,7 @@ from collections.abc import Iterable
 
 
 class Timeline[TNode]:
-    """A linear sequence of nodes with a movable cursor and checkpoint support.
+    """A linear sequence of nodes with a movable cursor and checkpoint support. \
     Enforces a linear history: new nodes can only be added at the tip.
     """
 
@@ -14,40 +14,40 @@ class Timeline[TNode]:
 
     @property
     def current(self) -> TNode:
-        """Returns the node at the current cursor position."""
+        """Return the node at the current cursor position."""
         return self._timeline[self._cursor]
 
     @property
     def future(self) -> Iterable[TNode]:
-        """Returns all nodes after the current cursor position."""
+        """Return all nodes after the current cursor position."""
         return self._timeline[self._cursor :]
 
     def seek(self, index: int) -> None:
-        """Moves the cursor to a specific index."""
+        """Move the cursor to a specific index."""
         if not (0 <= index < len(self._timeline)):
             msg = "Timeline index out of range"
             raise IndexError(msg)
         self._cursor = index
 
     def step_forward(self) -> None:
-        """Advances the cursor by one."""
+        """Advance the cursor by one."""
         self.seek(self._cursor + 1)
 
     def prune_future(self) -> None:
-        """Deletes all nodes coming after the current cursor."""
+        """Delete all nodes coming after the current cursor."""
         self.truncate_at(self._cursor)
 
     def checkpoint(self) -> None:
-        """Marks the current end of the timeline as a checkpoint."""
+        """Mark the current end of the timeline as a checkpoint."""
         self._checkpoints.append(len(self._timeline) - 1)
 
     def pop_checkpoint(self) -> int:
-        """Removes and returns the index of the most recent checkpoint."""
+        """Remove and returns the index of the most recent checkpoint."""
         return self._checkpoints.pop()
 
     def append(self, node: TNode) -> None:
-        """Adds a node to the end of the timeline.
-        Raises an error if the cursor is not at the end of the timeline.
+        """Add a node to the end of the timeline. \
+        Raise an error if the cursor is not at the end of the timeline.
         """
         if self._cursor != len(self._timeline) - 1:
             msg = "Cannot append when cursor is not at the timeline tip."
@@ -58,8 +58,8 @@ class Timeline[TNode]:
         self._cursor += 1
 
     def truncate_at(self, index: int) -> None:
-        """Removes all nodes and checkpoints strictly after the given index.
-        Moves cursor to the index if it was previously ahead of it.
+        """Remove all nodes and checkpoints strictly after the given index. Move \
+        cursor to the index if it was previously ahead of it.
         """
         # Keep elements up to `index`, delete `index + 1` onwards
         del self._timeline[index + 1 :]
