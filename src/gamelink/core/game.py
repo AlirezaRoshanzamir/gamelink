@@ -98,8 +98,8 @@ class Game[TState: State, TPlayer: Player[Any]](DecisionProducer):
         self._decision_producers: list[DecisionProducer] = []
         self._state = self.create_initial_state()
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def create_initial_state(cls) -> TState:
         pass
 
@@ -152,7 +152,7 @@ class Game[TState: State, TPlayer: Player[Any]](DecisionProducer):
         pass
 
 
-class Player[TState](ABC, DecisionProducer):
+class Player[TState](DecisionProducer, ABC):
     @abstractmethod
     def act(self, state: TState) -> Action:
         pass

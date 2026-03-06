@@ -20,7 +20,7 @@ class Timeline[TNode]:
     @property
     def future(self) -> Iterable[TNode]:
         """Return all nodes after the current cursor position."""
-        return self._timeline[self._cursor :]
+        return self._timeline[self._cursor + 1 :]
 
     def seek(self, index: int) -> None:
         """Move the cursor to a specific index."""
@@ -42,7 +42,7 @@ class Timeline[TNode]:
         self._checkpoints.append(len(self._timeline) - 1)
 
     def pop_checkpoint(self) -> int:
-        """Remove and returns the index of the most recent checkpoint."""
+        """Remove and return the index of the most recent checkpoint."""
         return self._checkpoints.pop()
 
     def append(self, node: TNode) -> None:
