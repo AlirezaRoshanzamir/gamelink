@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from typing import override
+from typing import Any, override
 
 from gamelink.core.game import (
     Action,
@@ -15,18 +15,18 @@ from gamelink.core.game import (
 from gamelink.utils import Timeline
 
 
-class BruteForceBot(Player):
+class BruteForceBot[TState: State](Player[TState]):
     def __init__(
         self,
-        state_to_actions: Callable[[State], Sequence[Action]],
-        state_evaluator: PlayerStateEvaluator,
+        state_to_actions: Callable[[TState], Sequence[Action]],
+        state_evaluator: PlayerStateEvaluator[Player[TState]],
     ) -> None:
         super().__init__()
         self._state_to_actions = state_to_actions
         self._state_evaluator = state_evaluator
 
     @override
-    def act(self, state: State) -> Action:
+    def act(self, state: TState) -> Action:
         possible_actions = self._state_to_actions(state)
 
         best_action_index = -1
@@ -48,18 +48,18 @@ class BruteForceBot(Player):
         )
 
 
-class PlayerStateEvaluator(ABC):
+class PlayerStateEvaluator[TPlayer: Player[Any]](ABC):
     @abstractmethod
-    def evaluate(self, player: Player) -> float:
+    def evaluate(self, player: TPlayer) -> float:
         pass
 
 
-class GameSimulatorPlayerStateEvaluator(PlayerStateEvaluator):
-    def __init__(self, game: Game) -> None:
+class GameSimulatorPlayerStateEvaluator(PlayerStateEvaluator[Player[Any]]):
+    def __init__(self, game: Game[Any, Any]) -> None:
         self._game = game
 
     @override
-    def evaluate(self, player: Player) -> float:
+    def evaluate(self, player: Player[Any]) -> float:
         root_selector = BacktrackingDecisionSelector()
         root_selector.path_timeline.checkpoint()
 

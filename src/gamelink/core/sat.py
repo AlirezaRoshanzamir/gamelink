@@ -15,7 +15,7 @@ class ExpressionResult(Enum):
     UNKNOWN = "unknown"
 
     @classmethod
-    def from_optional_bool(cls, value: bool | None) -> ExpressionResult:
+    def from_optional_bool(cls, value: bool | None) -> ExpressionResult:  # noqa: FBT001
         if value is None:
             return ExpressionResult.UNKNOWN
         if value:

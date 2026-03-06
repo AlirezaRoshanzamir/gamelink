@@ -4,7 +4,7 @@ import contextlib
 import random
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
-from typing import override
+from typing import Any, override
 
 
 class DecisionSelector(ABC):
@@ -91,13 +91,19 @@ class DecisionProducer:
         return self._decision_selector.select(decisions, weights)
 
 
-class Game(DecisionProducer):
+class Game[TState: State, TPlayer: Player[Any]](DecisionProducer):
     def __init__(self) -> None:
         super().__init__()
-        self._players: set[Player] = set()
+        self._players: set[TPlayer] = set()
         self._decision_producers: list[DecisionProducer] = []
+        self._state = self.create_initial_state()
 
-    def join_player(self, player: Player) -> None:
+    @classmethod
+    @abstractmethod
+    def create_initial_state(cls) -> TState:
+        pass
+
+    def join_player(self, player: TPlayer) -> None:
         self._players.add(player)
         self.join_decision_producer(player)
 
@@ -119,21 +125,18 @@ class Game(DecisionProducer):
             yield
 
     @property
-    @abstractmethod
-    def players(self) -> set[Player]:
-        pass
+    def players(self) -> set[TPlayer]:
+        return self._players
 
     @property
-    @abstractmethod
     def finished(self) -> bool:
         return self.state.finished
 
     @property
-    @abstractmethod
-    def state(self) -> State:
-        pass
+    def state(self) -> TState:
+        return self._state
 
-    def in_state(self, state: State) -> bool:
+    def in_state(self, state: TState) -> bool:
         return hash(self.state) == hash(state)
 
     def step_all_forward(self) -> None:
@@ -149,9 +152,9 @@ class Game(DecisionProducer):
         pass
 
 
-class Player(ABC, DecisionProducer):
+class Player[TState](DecisionProducer, ABC):
     @abstractmethod
-    def act(self, state: State) -> Action:
+    def act(self, state: TState) -> Action:
         pass
 
     @abstractmethod
