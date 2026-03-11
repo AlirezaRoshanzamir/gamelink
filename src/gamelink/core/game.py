@@ -129,8 +129,9 @@ class Game[TState: State, TPlayer: Player[Any]](DecisionProducer):
         return self._players
 
     @property
+    @abstractmethod
     def finished(self) -> bool:
-        return self.state.finished
+        pass
 
     @property
     def state(self) -> TState:
@@ -163,11 +164,6 @@ class Player[TState](DecisionProducer, ABC):
 
 
 class State:
-    @property
-    @abstractmethod
-    def finished(self) -> bool:
-        pass
-
     @abstractmethod
     def __hash__(self) -> int:
         pass

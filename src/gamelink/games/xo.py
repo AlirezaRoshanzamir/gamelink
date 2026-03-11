@@ -5,6 +5,7 @@ import sys
 from collections.abc import Callable, Sequence
 from enum import StrEnum
 from typing import override
+from dataclasses import dataclass, field
 
 from gamelink.core.game import Action, DecisionSelector, Game, Player, State
 from gamelink.core.minimax import (
@@ -26,51 +27,30 @@ class XOPlayerRole(StrEnum):
         return XOPlayerRole.X if self == XOPlayerRole.Y else XOPlayerRole.Y
 
 
+@dataclass
 class XOState(State):
-    def __init__(
-        self,
-        table: list[list[XOPlayerRole | str | None]] | None = None,
-        turn: XOPlayerRole = XOPlayerRole.X,
-    ) -> None:
-        rows_count = 3
-        cols_count = 3
+    ROWS_COUNT = 3
+    COLS_COUNT = 3
 
-        self._table: list[list[XOPlayerRole | None]]
-        if table is None:
-            self._table = [[None for _ in range(cols_count)] for _ in range(rows_count)]
-        else:
-            if len(table) != rows_count or any(len(row) != cols_count for row in table):
-                msg = "table must be 3x3"
-                raise ValueError(msg)
-            self._table = [
-                [self._normalize_cell(cell) for cell in row] for row in table
-            ]
-        self._turn = turn
+    turn: XOPlayerRole = XOPlayerRole.X
+    table: list[list[XOPlayerRole | None]] = field(
+        default_factory=lambda: [
+            [None for _ in range(XOState.COLS_COUNT)] for _ in range(XOState.ROWS_COUNT)
+        ]
+    )
 
-    @property
-    def table(self) -> list[list[XOPlayerRole | None]]:
-        return self._table
-
-    @property
-    def turn(self) -> XOPlayerRole:
-        return self._turn
-
-    def _normalize_cell(self, cell: XOPlayerRole | str | None) -> XOPlayerRole | None:
-        if cell is None:
-            return None
-        if isinstance(cell, XOPlayerRole):
-            return cell
-        if cell in (XOPlayerRole.X.value, XOPlayerRole.Y.value):
-            return XOPlayerRole(cell)
-        msg = f"Invalid cell value: {cell!r}"
-        raise ValueError(msg)
+    def __post_init__(self) -> None:
+        if len(self.table) != self.ROWS_COUNT or any(
+            len(row) != self.COLS_COUNT for row in self.table
+        ):
+            raise ValueError(f"table must be {self.ROWS_COUNT}x{self.COLS_COUNT}")
 
     def winner(self) -> XOPlayerRole | None:
         lines: list[list[XOPlayerRole | None]] = []
-        lines.extend(self._table)
-        lines.extend([[self._table[r][c] for r in range(3)] for c in range(3)])
-        lines.append([self._table[i][i] for i in range(3)])
-        lines.append([self._table[i][2 - i] for i in range(3)])
+        lines.extend(self.table)
+        lines.extend([[self.table[r][c] for r in range(3)] for c in range(3)])
+        lines.append([self.table[i][i] for i in range(3)])
+        lines.append([self.table[i][2 - i] for i in range(3)])
 
         for line in lines:
             a, b, c = line
@@ -79,24 +59,23 @@ class XOState(State):
         return None
 
     @property
-    @override
     def finished(self) -> bool:
         if self.winner() is not None:
             return True
-        return all(cell is not None for row in self._table for cell in row)
+        return all(cell is not None for row in self.table for cell in row)
 
     def __str__(self) -> str:
         rows = [
             " | ".join(cell.value if cell else "." for cell in row)
-            for row in self._table
+            for row in self.table
         ]
         return "\n---------\n".join(rows)
 
     @override
     def __hash__(self) -> int:
         return hash(
-            tuple(tuple(cell for cell in row) for row in self._table)
-        ) * 31 + hash(self._turn)
+            tuple(tuple(cell for cell in row) for row in self.table)
+        ) * 31 + hash(self.turn)
 
 
 class XOPlayer(Player[XOState]):
@@ -124,6 +103,11 @@ class XOGame(Game[XOState, XOPlayer]):
         self._role_to_player: dict[XOPlayerRole, XOPlayer] = {}
 
     @override
+    @property
+    def finished(self) -> bool:
+        return self._state.finished
+
+    @override
     @classmethod
     def create_initial_state(cls) -> XOState:
         return XOState()
@@ -137,11 +121,11 @@ class XOGame(Game[XOState, XOPlayer]):
 
     @override
     def step_forward(self) -> None:
-        player = self._role_to_player[self._state._turn]
+        player = self._role_to_player[self._state.turn]
         action = player.act(self._state)
         action.do()
         self._history.append(action)
-        self._state._turn = self._state._turn.opposite()
+        self._state.turn = self._state.turn.opposite()
         assert isinstance(action, Select)
         winner = self._state.winner()
         logger.info(
@@ -158,7 +142,7 @@ class XOGame(Game[XOState, XOPlayer]):
         if self._history:
             action = self._history.pop()
             action.revert()
-            self._state._turn = self._state._turn.opposite()
+            self._state.turn = self._state.turn.opposite()
             assert isinstance(action, Select)
             logger.info(
                 "Reverted Player %s's move at (%d, %d)\n%s",
@@ -184,22 +168,22 @@ class Select(Action):
 
     @override
     def is_feasible(self) -> bool:
-        return self._state._table[self._row][self._col] is None
+        return self._state.table[self._row][self._col] is None
 
     @override
     def do(self) -> None:
-        self._state._table[self._row][self._col] = self._role
+        self._state.table[self._row][self._col] = self._role
 
     @override
     def revert(self) -> None:
-        self._state._table[self._row][self._col] = None
+        self._state.table[self._row][self._col] = None
 
 
 class BaseXOPlayer(XOPlayer):
     @override
     def act(self, state: XOState) -> Action:
         empty = [
-            (r, c) for r in range(3) for c in range(3) if state._table[r][c] is None
+            (r, c) for r in range(3) for c in range(3) if state.table[r][c] is None
         ]
         decisions = [Select(state, r, c, self._role) for r, c in empty]
         return self.select_decision(decisions, [1.0] * len(decisions))
@@ -270,17 +254,17 @@ class XOBruteForceBot(XOPlayer):
     def _state_to_actions(self, state: State) -> Sequence[Action]:
         assert isinstance(state, XOState)
         empty = [
-            (r, c) for r in range(3) for c in range(3) if state._table[r][c] is None
+            (r, c) for r in range(3) for c in range(3) if state.table[r][c] is None
         ]
-        return [Select(state, r, c, self.role) for r, c in empty]
+        return [Select(state, row, col, self.role) for row, col in empty]
 
     @override
     def act(self, state: XOState) -> Action:
         self._sim_game._state = state
-        flat = [c for r in state.table for c in r]
+        flat = [col for row in state.table for col in row]
         x_count = flat.count(XOPlayerRole.X)
         o_count = flat.count(XOPlayerRole.Y)
-        self._sim_game.state._turn = (
+        self._sim_game._state.turn = (
             XOPlayerRole.X if (x_count + o_count) % 2 else XOPlayerRole.Y
         )
 

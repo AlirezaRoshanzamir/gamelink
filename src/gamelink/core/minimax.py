@@ -125,8 +125,7 @@ class BacktrackingDecisionSelector(DecisionSelector):
             selecting_decision_index = self.last_selected_decision_index + 1
             self._path_timeline.prune_future()
         else:
-            msg = "There is no decision left to select."
-            raise RuntimeError(msg)
+            raise RuntimeError("There is no decision left to select.")
 
         if selecting_decision_index == 0:
             self._path_timeline.append(
