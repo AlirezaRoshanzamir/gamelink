@@ -1,3 +1,5 @@
+# type: ignore
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -149,7 +151,7 @@ class BuyRantCard(Action):
         if self._reserved:
             self._player.reserved_rant_cards.add(self._buying_rant_card)
 
-    def _apply(self, enable_returning_coin_tokens: bool) -> bool:
+    def _apply(self, *, enable_returning_coin_tokens: bool) -> bool:
         remaining_tokens_count = 0
 
         for token, count in self._buying_rant_card.needing_tokens.items():
