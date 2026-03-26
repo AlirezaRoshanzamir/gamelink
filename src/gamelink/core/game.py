@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import contextlib
 import random
-from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator, Sequence, Iterable, Mapping
-from typing import Any, cast, override
-from dataclasses import dataclass
 import sys
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, cast, override
 
 type Readonly[T] = T
 
@@ -22,7 +22,7 @@ class Probabilistic[TEvent]:
 
     @classmethod
     def many_from_mapping(
-        cls, each_event_probability: Mapping[TEvent, float]
+        cls, each_event_probability: Mapping[TEvent, float],
     ) -> Sequence[Probabilistic[TEvent]]:
         return [
             Probabilistic(event=event, probability=probability)
@@ -87,7 +87,7 @@ class DelegatedDecisionSelector(DecisionSelector):
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> int:
-        return self._delegation_function().select_index_hook(decisions, title)
+        return self._delegation_function().select_index(decisions, title)
 
 
 class SamplingDecisionSelector(DecisionSelector):
@@ -153,12 +153,17 @@ class DecisionProducer:
 
 
 class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any, Any]](
-    DecisionProducer
+    DecisionProducer,
 ):
     def __init__(self) -> None:
         super().__init__()
         self._players: set[TPlayer] = set()
         self._decision_producers: list[DecisionProducer] = []
+        self._simulation: bool = False
+
+    @property
+    def simulation(self) -> bool:
+        return self._simulation
 
     def join_player(self, player: TPlayer) -> None:
         self._players.add(player)
@@ -177,14 +182,14 @@ class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any,
             self.replace_player(player, replacement)
 
     def replace_decision_producer(
-        self, producer: DecisionProducer, replacement: DecisionProducer
+        self, producer: DecisionProducer, replacement: DecisionProducer,
     ) -> None:
         self._decision_producers.remove(producer)
         self._decision_producers.append(replacement)
 
     @contextlib.contextmanager
     def with_player_replacement(
-        self, player: TPlayer, replacement: TPlayer
+        self, player: TPlayer, replacement: TPlayer,
     ) -> Iterator[None]:
         self.replace_player(player, replacement)
         yield
@@ -192,13 +197,27 @@ class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any,
 
     @contextlib.contextmanager
     def with_players_replacement(
-        self, replacements: Mapping[TPlayer, TPlayer]
+        self, replacements: Mapping[TPlayer, TPlayer],
     ) -> Iterator[None]:
         self.replace_players(replacements)
         yield
         self.replace_players(
-            {replacement: player for player, replacement in replacements.items()}
+            {replacement: player for player, replacement in replacements.items()},
         )
+
+    @contextlib.contextmanager
+    def simulate(
+        self,
+        player_replacements: Mapping[TPlayer, TPlayer],
+        decision_selector: DecisionSelector,
+    ) -> Iterator[None]:
+        with (
+            self.with_players_replacement(player_replacements),
+            self.with_decision_selector(decision_selector),
+        ):
+            self._simulation = True
+            yield
+        self._simulation = False
 
     @override
     @contextlib.contextmanager
@@ -272,7 +291,7 @@ class Player[TObservation: Observation, TAction: Action[Any]](DecisionProducer, 
         exclude = exclude or set()
         return self.select_decision(
             decisions=Probabilistic.many_uniform(
-                [i for i in range(low, high + 1) if i not in exclude]
+                [i for i in range(low, high + 1) if i not in exclude],
             ),
             title=title,
         )
@@ -304,11 +323,11 @@ class GenericPlayer[
 
         return (
             cast(  # Due to Python limitation using type variable as a type parameter.
-                TAction,
+                "TAction",
                 self.select_decision(
                     Probabilistic.many_uniform(
-                        list(final_readonly_game.possible_actions_for_player(self))
-                    )
+                        list(final_readonly_game.possible_actions_for_player(self)),
+                    ),
                 ),
             )
         )
