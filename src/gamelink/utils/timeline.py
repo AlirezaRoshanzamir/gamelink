@@ -12,15 +12,29 @@ class Timeline[TNode]:
         self._checkpoints: list[int] = []
         self._cursor: int = 0
 
+    def __bool__(self) -> bool:
+        return bool(self._timeline)
+
     @property
     def current(self) -> TNode:
         """Return the node at the current cursor position."""
         return self._timeline[self._cursor]
 
+    @current.setter
+    def current(self, value: TNode) -> None:
+        """Set the node at the current cursor position."""
+        self._timeline[self._cursor] = value
+
     @property
     def future(self) -> Iterable[TNode]:
         """Return all nodes after the current cursor position."""
         return self._timeline[self._cursor + 1 :]
+
+    def reversed(self, inclusive_to: int) -> Iterable[TNode]:
+        """Return nodes from the current cursor position back to (including) \
+        the given index.
+        """
+        return self._timeline[inclusive_to : self._cursor + 1][::-1]
 
     def seek(self, index: int) -> None:
         """Move the cursor to a specific index."""
@@ -33,13 +47,17 @@ class Timeline[TNode]:
         """Advance the cursor by one."""
         self.seek(self._cursor + 1)
 
-    def prune_future(self) -> None:
+    def clear_future(self) -> None:
         """Delete all nodes coming after the current cursor."""
-        self.truncate_at(self._cursor)
+        self.prune_after(self._cursor)
 
-    def checkpoint(self) -> None:
-        """Mark the current end of the timeline as a checkpoint."""
-        self._checkpoints.append(len(self._timeline) - 1)
+    def any_checkpoint(self) -> bool:
+        """Check if there is any checkpoint set."""
+        return bool(self._checkpoints)
+
+    def checkpoint_current(self) -> None:
+        """Mark the current cursor as a checkpoint."""
+        self._checkpoints.append(self._cursor)
 
     def pop_checkpoint(self) -> int:
         """Remove and return the index of the most recent checkpoint."""
@@ -54,10 +72,8 @@ class Timeline[TNode]:
             raise RuntimeError(msg)
 
         self._timeline.append(node)
-        # Automatically advance cursor to the new tip
-        self._cursor += 1
 
-    def truncate_at(self, index: int) -> None:
+    def prune_after(self, index: int) -> None:
         """Remove all nodes and checkpoints strictly after the given index. Move \
         cursor to the index if it was previously ahead of it.
         """
