@@ -1,31 +1,35 @@
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any, override
 
-from gamelink.core.bot import (
-    BruteForceBot,
-    BruteForcePlayerScorer,
-)
 from gamelink.core.game import (
     Action,
     CliDecisionSelector,
     DecisionSelector,
     Game,
     GenericPlayer,
-    Observation,
     Probabilistic,
     Readonly,
+    State,
+)
+from gamelink.core.learning import (
+    BruteForceFOVFunction,
+    FOQFunctionAsQFunction,
+    FOVFunctionAsFOQFunction,
+    MinimaxBacktrackingDecisionSelectorNodeFactory,
+    OptimalPlayer,
 )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-# logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
-class XOGame(Game[Readonly["XOGame"], "Select", "XOPlayer"], Observation):
+class XOGame(Game[Readonly["XOGame"], "Select", "XOPlayer"], State):
     BOARD_SIZE = 3
 
     def __init__(self) -> None:
@@ -57,11 +61,9 @@ class XOGame(Game[Readonly["XOGame"], "Select", "XOPlayer"], Observation):
         return all(cell is not None for row in self._board for cell in row)
 
     @override
-    def observation_for_player(self, player: XOPlayer) -> Readonly[XOGame]:
-        return self
-
-    @override
-    def possible_actions_for_player(self, player: XOPlayer) -> Sequence[Select]:
+    def possible_actions_for_player(
+        self, player: XOPlayer, state: Readonly[XOGame]
+    ) -> Sequence[Select]:
         return [
             Select(row, col, player.role)
             for row in range(XOGame.BOARD_SIZE)
@@ -80,14 +82,22 @@ class XOGame(Game[Readonly["XOGame"], "Select", "XOPlayer"], Observation):
 
     def winner(self) -> XOPlayerRole | None:
         lines: list[list[XOPlayerRole | None]] = []
+
+        # Row-wise
         lines.extend(self._board)
+
+        # Column-wise
         lines.extend(
             [
                 [self._board[r][c] for r in range(XOGame.BOARD_SIZE)]
                 for c in range(XOGame.BOARD_SIZE)
             ],
         )
+
+        # Main diagonal
         lines.append([self._board[i][i] for i in range(XOGame.BOARD_SIZE)])
+
+        # Second diagonal
         lines.append(
             [
                 self._board[i][XOGame.BOARD_SIZE - i - 1]
@@ -133,7 +143,7 @@ class XOGame(Game[Readonly["XOGame"], "Select", "XOPlayer"], Observation):
         action.do(self)
         self._history.append(action)
         winner = self.winner()
-        logger.info(
+        self.log(
             "Action: %s, Winner: %s, Game Board:\n%s",
             action,
             winner.value if winner else "none",
@@ -145,7 +155,7 @@ class XOGame(Game[Readonly["XOGame"], "Select", "XOPlayer"], Observation):
         if self._history:
             action = self._history.pop()
             action.revert(self)
-            logger.info(
+            self.log(
                 "Action reverted: %s, Game Board:\n%s",
                 action,
                 self,
@@ -221,7 +231,8 @@ class Select(Action[XOGame]):
 
 
 class XOBruteForceBot(
-    BruteForceBot[XOGame, Readonly[XOGame], Select, XOPlayer], XOPlayer,
+    OptimalPlayer[XOGame, Readonly[XOGame], Select, XOPlayer],
+    XOPlayer,
 ):
     def __init__(
         self,
@@ -231,16 +242,26 @@ class XOBruteForceBot(
         super().__init__(
             role=role,
             decision_selector=decision_selector,
-            possible_games_generator=lambda readonly_game: [
-                Probabilistic.deterministic(readonly_game),
-            ],
-            actions_generator=lambda readonly_game: (
-                readonly_game.possible_actions_for_player(self)
+            possible_actions_generator=lambda player, readonly_game: (
+                readonly_game.possible_actions_for_player(
+                    player,
+                    readonly_game,
+                )
             ),
-            player_scorer=BruteForcePlayerScorer(
-                players_replacer=lambda current_player, replacing_player: XOPlayer(
-                    replacing_player.role,
+            q_function=FOQFunctionAsQFunction(
+                foq_function=FOVFunctionAsFOQFunction(
+                    fov_function=BruteForceFOVFunction(
+                        node_factory=MinimaxBacktrackingDecisionSelectorNodeFactory(),
+                        players_replacer=lambda current_player, replacing_player: (
+                            XOPlayer(
+                                replacing_player.role,
+                            )
+                        ),
+                    )
                 ),
+                possible_games_generator=lambda readonly_game: [
+                    Probabilistic.deterministic(readonly_game),
+                ],
             ),
         )
 
@@ -249,4 +270,4 @@ if __name__ == "__main__":
     game = XOGame()
     game.join_player(XOBruteForceBot(XOPlayerRole.X))
     game.join_player(XOPlayer(XOPlayerRole.O, decision_selector=CliDecisionSelector()))
-    game.step_forward()
+    game.step_all_forward()

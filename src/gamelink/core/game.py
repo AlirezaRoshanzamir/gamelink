@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import random
 import sys
 from abc import ABC, abstractmethod
@@ -22,7 +23,8 @@ class Probabilistic[TEvent]:
 
     @classmethod
     def many_from_mapping(
-        cls, each_event_probability: Mapping[TEvent, float],
+        cls,
+        each_event_probability: Mapping[TEvent, float],
     ) -> Sequence[Probabilistic[TEvent]]:
         return [
             Probabilistic(event=event, probability=probability)
@@ -42,6 +44,7 @@ class DecisionSelector(ABC):
     def __init__(self) -> None:
         self._last_number_of_decisions = 0
         self._last_selected_decision_index = -1
+        self._last_producer: DecisionProducer | None = None
 
     @property
     def last_number_of_decisions(self) -> int:
@@ -51,26 +54,35 @@ class DecisionSelector(ABC):
     def last_selected_decision_index(self) -> int:
         return self._last_selected_decision_index
 
+    @property
+    def last_producer(self) -> DecisionProducer | None:
+        return self._last_producer
+
     def select[TDecision](
         self,
+        producer: DecisionProducer,
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> TDecision:
-        return decisions[self.select_index(decisions, title)].event
+        return decisions[self.select_index(producer, decisions, title)].event
 
     def select_index[TDecision](
         self,
+        producer: DecisionProducer,
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> int:
+        self._last_producer = producer
         self._last_number_of_decisions = len(decisions)
-        selected_index = self.select_index_hook(decisions, title)
+        self._last_decisions = decisions
+        selected_index = self.select_index_hook(producer, decisions, title)
         self._last_selected_decision_index = selected_index
         return selected_index
 
     @abstractmethod
     def select_index_hook[TDecision](
         self,
+        producer: DecisionProducer,
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> int:
@@ -84,16 +96,18 @@ class DelegatedDecisionSelector(DecisionSelector):
     @override
     def select_index_hook[TDecision](
         self,
+        producer: DecisionProducer,
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> int:
-        return self._delegation_function().select_index(decisions, title)
+        return self._delegation_function().select_index(producer, decisions, title)
 
 
 class SamplingDecisionSelector(DecisionSelector):
     @override
     def select_index_hook[TDecision](
         self,
+        producer: DecisionProducer,
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> int:
@@ -107,6 +121,7 @@ class CliDecisionSelector(DecisionSelector):
     @override
     def select_index_hook[TDecision](
         self,
+        producer: DecisionProducer,
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> int:
@@ -131,8 +146,14 @@ class DecisionProducer:
     def __init__(
         self,
         decision_selector: DecisionSelector | None = None,
+        stochastic: bool = False,
     ) -> None:  # For cooperative multiple inheritance
         self._decision_selector = decision_selector or SamplingDecisionSelector()
+        self._stochastic = stochastic
+
+    @property
+    def stochastic(self) -> bool:
+        return self._stochastic
 
     @contextlib.contextmanager
     def with_decision_selector(
@@ -149,17 +170,18 @@ class DecisionProducer:
         decisions: Sequence[Probabilistic[TDecision]],
         title: str | None = None,
     ) -> TDecision:
-        return self._decision_selector.select(decisions, title)
+        return self._decision_selector.select(self, decisions, title)
 
 
-class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any, Any]](
+class Game[TState: State, TAction: Action[Any], TPlayer: Player[Any, Any]](
     DecisionProducer,
 ):
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(stochastic=True)
         self._players: set[TPlayer] = set()
         self._decision_producers: list[DecisionProducer] = []
         self._simulation: bool = False
+        self._logger = logging.getLogger(self.__class__.__module__)
 
     @property
     def simulation(self) -> bool:
@@ -182,14 +204,18 @@ class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any,
             self.replace_player(player, replacement)
 
     def replace_decision_producer(
-        self, producer: DecisionProducer, replacement: DecisionProducer,
+        self,
+        producer: DecisionProducer,
+        replacement: DecisionProducer,
     ) -> None:
         self._decision_producers.remove(producer)
         self._decision_producers.append(replacement)
 
     @contextlib.contextmanager
     def with_player_replacement(
-        self, player: TPlayer, replacement: TPlayer,
+        self,
+        player: TPlayer,
+        replacement: TPlayer,
     ) -> Iterator[None]:
         self.replace_player(player, replacement)
         yield
@@ -197,7 +223,8 @@ class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any,
 
     @contextlib.contextmanager
     def with_players_replacement(
-        self, replacements: Mapping[TPlayer, TPlayer],
+        self,
+        replacements: Mapping[TPlayer, TPlayer],
     ) -> Iterator[None]:
         self.replace_players(replacements)
         yield
@@ -246,11 +273,9 @@ class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any,
         pass
 
     @abstractmethod
-    def observation_for_player(self, player: TPlayer) -> TObservation:
-        pass
-
-    @abstractmethod
-    def possible_actions_for_player(self, player: TPlayer) -> Iterable[TAction]:
+    def possible_actions_for_player(
+        self, player: TPlayer, state: TState
+    ) -> Iterable[TAction]:
         pass
 
     @abstractmethod
@@ -269,14 +294,21 @@ class Game[TObservation: Observation, TAction: Action[Any], TPlayer: Player[Any,
     def step_backward(self) -> None:
         pass
 
+    def log(self, message: str, *args: Any) -> None:
+        self._logger.log(
+            logging.DEBUG if self._simulation else logging.INFO,
+            message,
+            *args,
+        )
 
-class Observation:
+
+class State:
     pass
 
 
-class Player[TObservation: Observation, TAction: Action[Any]](DecisionProducer, ABC):
+class Player[TState: State, TAction: Action[Any]](DecisionProducer, ABC):
     @abstractmethod
-    def act(self, observation: TObservation) -> TAction:
+    def act(self, state: TState) -> TAction:
         pass
 
     def select_integer(
@@ -299,7 +331,7 @@ class Player[TObservation: Observation, TAction: Action[Any]](DecisionProducer, 
 
 class GenericPlayer[
     TGame: Game[Any, Any, Any],
-    TObservation: Observation,
+    TState: State,
     TAction: Action[Any],
 ](Player[Any, Any]):
     def __init__(
@@ -311,13 +343,13 @@ class GenericPlayer[
         self._readonly_game = readonly_game
 
     @override
-    def act(self, observation: TObservation) -> TAction:
+    def act(self, state: TState) -> TAction:
         final_readonly_game: Readonly[Game[Any, Any, Any]]
 
         if self._readonly_game is not None:
             final_readonly_game = self._readonly_game
-        elif isinstance(observation, Game):
-            final_readonly_game = observation
+        elif isinstance(state, Game):
+            final_readonly_game = state
         else:
             raise RuntimeError("Cannot find a game to get possible actions.")
 
@@ -326,7 +358,9 @@ class GenericPlayer[
                 "TAction",
                 self.select_decision(
                     Probabilistic.many_uniform(
-                        list(final_readonly_game.possible_actions_for_player(self)),
+                        list(
+                            final_readonly_game.possible_actions_for_player(self, state)
+                        ),
                     ),
                 ),
             )

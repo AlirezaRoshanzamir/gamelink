@@ -30,6 +30,12 @@ class Timeline[TNode]:
         """Return all nodes after the current cursor position."""
         return self._timeline[self._cursor + 1 :]
 
+    def reversed(self, inclusive_to: int) -> Iterable[TNode]:
+        """Return nodes from the current cursor position back to (including) \
+        the given index.
+        """
+        return self._timeline[inclusive_to : self._cursor + 1][::-1]
+
     def seek(self, index: int) -> None:
         """Move the cursor to a specific index."""
         if not (0 <= index < len(self._timeline)):
@@ -41,7 +47,7 @@ class Timeline[TNode]:
         """Advance the cursor by one."""
         self.seek(self._cursor + 1)
 
-    def prune_future(self) -> None:
+    def clear_future(self) -> None:
         """Delete all nodes coming after the current cursor."""
         self.prune_after(self._cursor)
 
