@@ -17,10 +17,10 @@
             "module": "gamelink.games.pig"
         },
         {
-            "name": "Bot",
+            "name": "Learning",
             "type": "debugpy",
             "request": "launch",
-            "module": "gamelink.core.bot"
+            "module": "gamelink.core.learning"
         }
     ]
 }

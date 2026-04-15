@@ -74,7 +74,6 @@ class DecisionSelector(ABC):
     ) -> int:
         self._last_producer = producer
         self._last_number_of_decisions = len(decisions)
-        self._last_decisions = decisions
         selected_index = self.select_index_hook(producer, decisions, title)
         self._last_selected_decision_index = selected_index
         return selected_index
@@ -238,13 +237,15 @@ class Game[TState: State, TAction: Action[Any], TPlayer: Player[Any, Any]](
         player_replacements: Mapping[TPlayer, TPlayer],
         decision_selector: DecisionSelector,
     ) -> Iterator[None]:
-        with (
-            self.with_players_replacement(player_replacements),
-            self.with_decision_selector(decision_selector),
-        ):
-            self._simulation = True
-            yield
-        self._simulation = False
+        try:
+            with (
+                self.with_players_replacement(player_replacements),
+                self.with_decision_selector(decision_selector),
+            ):
+                self._simulation = True
+                yield
+        finally:
+            self._simulation = False
 
     @override
     @contextlib.contextmanager

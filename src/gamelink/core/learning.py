@@ -184,7 +184,7 @@ class FOQFunctionAsQFunction[
         total_value = 0.0
         for probabilistic_game in self._possible_games_generator(state):
             game, probability = probabilistic_game.event, probabilistic_game.probability
-            total_value = probability * self._foq_function.foq_evaluate(
+            total_value += probability * self._foq_function.foq_evaluate(
                 game, player, state, action
             )
         return total_value
@@ -477,7 +477,6 @@ class GenericBacktrackingDecisionSelectorNode(BacktrackingDecisionSelectorNode):
                 self._alpha, self._value, self._last_decision_probability
             )
 
-    @override
     @override
     def select_index_hook[TDecision](
         self,

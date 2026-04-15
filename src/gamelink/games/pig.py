@@ -177,7 +177,7 @@ class Roll(PigAction):
     def do(self, game: PigGame) -> None:
         self._prev_turn_score = game.turn_score
         self._rolled = game.select_decision(
-            Probabilistic.many_uniform(list(range(1, game.DICE_SIDES))),
+            Probabilistic.many_uniform(list(range(1, game.DICE_SIDES + 1))),
             title="die",
         )
         if self._rolled == 1:
